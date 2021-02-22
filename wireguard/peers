@@ -1,0 +1,3 @@
+# hostname pubkey  psk  address/mask port
+server1 xxxxxxx yyyyyy 192.0.2.1/32 54321
+client1 xxxxxxx yyyyyy 192.0.2.10/32

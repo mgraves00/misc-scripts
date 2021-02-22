@@ -1,0 +1,4 @@
+wgkey `cat /etc/wireguard/$(hostname).key`
+wgport 54321
+!/etc/wireguard/add_peers.sh $if
+inet 192.0.2.1 255.255.255.0
