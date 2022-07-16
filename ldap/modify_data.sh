@@ -87,6 +87,7 @@ fi
 echo "dn: ${RDN}" >>${TEMP}
 echo "changetype: modify" >>${TEMP}
 
+set -x
 # now go thru the args again to add the add/modify/delete commands
 set -- $args
 while [ $# -ne 0 ]; do
@@ -94,7 +95,7 @@ while [ $# -ne 0 ]; do
 	-a)
 		kv=$2
 		key=`echo $kv | cut -f1 -d=`
-		val=`echo $kv | cut -f2 -d=`
+		val=`echo $kv | cut -f2- -d=`
 		echo "add: ${key}" >>${TEMP}
 		echo "${key}: ${val}" >>${TEMP}
 		echo "-" >>${TEMP}
@@ -102,7 +103,7 @@ while [ $# -ne 0 ]; do
 	-d)
 		kv=$2
 		key=`echo $kv | cut -f1 -d=`
-		val=`echo $kv | cut -f2 -s -d=`
+		val=`echo $kv | cut -f2- -s -d=`
 		echo "delete: ${key}" >>${TEMP}
 		if [ ! -z "${val}" ]; then
 			echo "${key}: ${val}" >>${TEMP}
@@ -112,7 +113,7 @@ while [ $# -ne 0 ]; do
 	-m)
 		kv=$2
 		key=`echo $kv | cut -f1 -d=`
-		val=`echo $kv | cut -f2 -d=`
+		val=`echo $kv | cut -f2- -d=`
 		echo "replace: ${key}" >>${TEMP}
 		echo "${key}: ${val}" >>${TEMP}
 		echo "-" >>${TEMP}
