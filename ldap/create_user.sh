@@ -104,24 +104,28 @@ trap cleanup HUP
 trap cleanup ALRM
 TEMP=`mktemp`
 
+fname=""
+lname=""
+#XXX figure out way to find the next UID/GID
+uid=2000
+gid=2000
+
 if [ -z "$2" ]; then
 	ask_pass
 #	pass=`salted_pass $resp`
 	pass=`encrypt $resp`
+	ask "First Name" "First $1"
+	fname=$resp
+	ask "Last Name" "Last $1"
+	lname=$resp
+	ask "Home path" "/home/$1"
 else
 #	pass=`salted_pass $2`
 	pass=`encrypt $2`
+	fname=$1
+	lname="user"
+	home="/var/mail/vmail"
 fi
-
-ask "First Name" "First $1"
-fname=$resp
-ask "Last Name" "Last $1"
-lname=$resp
-
-#XXX figure out way to find the next UID/GID
-uid=2000
-gid=2000
-home="/var/mail/vmail"
 
 cat << EOF > $TEMP
 #
