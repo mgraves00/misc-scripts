@@ -23,17 +23,18 @@
 # SOFTWARE.
 
 usage() {
-	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-b base_dn] <uid>"
+	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-b base_dn] [uid] [fields]"
 }
 if [ -f "./ENV" ]; then
 	. ./ENV
 fi
-args=`getopt b:D:H:ho: $*`
+args=`getopt b:D:H:ho:w: $*`
 if [ $? -ne 0 ]; then
 	echo "error with args"
 	usage
 	exit 2
 fi
+pass="-W"
 set -- $args
 # search for -u first... save rest for later
 while [ $# -ne 0 ]; do
@@ -50,6 +51,9 @@ while [ $# -ne 0 ]; do
 	-H)
 		LDAP_HOST=$2
 		shift; shift;;
+	-w)
+		pass="-w $2"
+		shift; shift;;
 	--)
 		shift; break;;
 	esac
@@ -60,4 +64,11 @@ if [ -z ${LDAP_HOST} -o -z ${ADMIN_DN} -o -z ${BASE_DN} ]; then
 	exit 2
 fi
 
-ldap search -H ${LDAP_HOST} -b ${BASE_DN} -D ${ADMIN_DN} "(uid=$1)"
+if [ -z "$1" ]; then
+	user="*"
+else
+	user=$1
+	shift
+fi
+
+ldapsearch -x ${pass} -H ${LDAP_HOST} -b ou=people,${BASE_DN} -D ${ADMIN_DN} "(uid=$user)" $*
