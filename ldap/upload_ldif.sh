@@ -35,12 +35,13 @@ usage() {
 if [ -f "./ENV" ]; then
 	. ./ENV
 fi
-args=`getopt b:D:H:ho: $*`
+args=`getopt b:D:H:ho:w: $*`
 if [ $? -ne 0 ]; then
 	echo "error with args"
 	usage
 	exit 2
 fi
+pass="-W"
 set -- $args
 # search for -u first... save rest for later
 while [ $# -ne 0 ]; do
@@ -56,6 +57,9 @@ while [ $# -ne 0 ]; do
 		exit 0;;
 	-H)
 		LDAP_HOST=$2
+		shift; shift;;
+	-w)
+		pass="-w $2"
 		shift; shift;;
 	--)
 		shift; break;;
@@ -84,9 +88,9 @@ trap cleanup ALRM
 # ADD LDIF
 grep -q "changetype" $LDIF_FILE
 if [ $? -eq 0 ]; then
-	ldapmodify -vv -W -h ${LDAP_HOST} -D "${ADMIN_DN}" -f "${LDIF_FILE}"
+	ldapmodify -vv ${pass} -H ${LDAP_HOST} -D "${ADMIN_DN}" -f "${LDIF_FILE}"
 else
-	ldapadd -vv -W -h ${LDAP_HOST} -D "${ADMIN_DN}" -f "${LDIF_FILE}"
+	ldapadd -vv ${pass} -H ${LDAP_HOST} -D "${ADMIN_DN}" -f "${LDIF_FILE}"
 fi
 
 exit $?
