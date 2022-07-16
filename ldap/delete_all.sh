@@ -28,7 +28,8 @@ usage() {
 if [ -f "./ENV" ]; then
 	. ./ENV
 fi
-args=`getopt b:D:H:h $*`
+pass="-W"
+args=`getopt b:D:H:hw: $*`
 if [ $? -ne 0 ]; then
 	echo "error with args"
 	usage
@@ -50,8 +51,8 @@ while [ $# -ne 0 ]; do
 	-H)
 		LDAP_HOST=$2
 		shift; shift;;
-	-o)
-		out_file="$2"
+	-w)
+		pass="-w $2"
 		shift; shift;;
 	--)
 		shift; break;;
@@ -64,5 +65,5 @@ if [ -z ${LDAP_HOST} -o -z ${ADMIN_DN} -o -z ${BASE_DN} ]; then
 fi
 
 
-ldapdelete -rvW -H ${LDAP_HOST} -D "${ADMIN_DN}" "${BASE_DN}"
+ldapdelete -rv ${pass} -H ${LDAP_HOST} -D "${ADMIN_DN}" "${BASE_DN}"
 
