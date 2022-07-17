@@ -35,7 +35,7 @@ usage() {
 if [ -f "./ENV" ]; then
 	. ./ENV
 fi
-args=`getopt b:D:H:ho:w: $*`
+args=`getopt b:D:H:hw: $*`
 if [ $? -ne 0 ]; then
 	echo "error with args"
 	usage
@@ -43,7 +43,6 @@ if [ $? -ne 0 ]; then
 fi
 pass="-W"
 set -- $args
-# search for -u first... save rest for later
 while [ $# -ne 0 ]; do
 	case "$1" in
 	-b)
@@ -85,7 +84,6 @@ trap cleanup EXIT
 trap cleanup HUP
 trap cleanup ALRM
 
-# ADD LDIF
 grep -q "changetype" $LDIF_FILE
 if [ $? -eq 0 ]; then
 	ldapmodify -vv ${pass} -H ${LDAP_HOST} -D "${ADMIN_DN}" -f "${LDIF_FILE}"
