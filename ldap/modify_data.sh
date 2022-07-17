@@ -31,6 +31,7 @@ cleanup() {
 	fi
 }
 
+#XXX NOTE: key=val pairs where the 'val' has spaces in it, will not work correclty.
 usage() {
 	echo "${0##*/} [-o output.ldif] -r record_dn [[-m key=val] [-d key] [-a key=val]...]"
 }
