@@ -145,6 +145,7 @@ givenName: $fname
 displayName: $fname $lname
 mail: $1@$DOMAIN_NAME
 userPassword: {CRYPT}$pass
+description: $pass
 EOF
 
 if [ -z "$out_file" ]; then
