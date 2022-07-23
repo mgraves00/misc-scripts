@@ -31,9 +31,8 @@ cleanup() {
 	fi
 }
 
-#XXX NOTE: key=val pairs where the 'val' has spaces in it, will not work correclty.
 usage() {
-	echo "${0##*/} [-o output.ldif] -r record_dn [[-m key=val] [-d key] [-a key=val]...]"
+	echo "${0##*/} -r record_dn [-o output.ldif] [[-m key=val] [-d key] [-a key=val]...]"
 }
 
 trap cleanup EXIT
@@ -44,56 +43,20 @@ if [ -f "./ENV" ]; then
 	. ./ENV
 fi
 
-RDN=""
-
-args=`getopt a:d:hm:o:r: $*`
-if [ $? -ne 0 ]; then
-	echo "error with args"
-	echo usage
-	exit 2
-fi
-set -- $args
-CNT=0
-# search for -u first... save rest for later
-while [ $# -ne 0 ]; do
-	case "$1" in
-	-a|-d|-m)
-		CNT=$((CNT+1))
-		shift; shift;;
-	-h)
-		usage
-		exit 0;;
-	-o)
-		out_file="$2"
-		shift; shift;;
-	-r)
-		RDN=$2
-		shift; shift;;
-	--)
-		shift; break;;
-	esac
-done
-if [ -z "$RDN" ]; then
-	echo "Must Specify a record DN to work on"
-	usage
-	exit 1
-fi
-if [ $CNT -le 0 ]; then
-	echo "Nothing to do"
-	usage
-	exit 1
-fi
-
-# INIT the TEMP FILE
-echo "dn: ${RDN}" >>${TEMP}
-echo "changetype: modify" >>${TEMP}
-
-set -x
+# getopt doesn't handle args with spaces.  too many shell interpertations
+# so just run thru the args and save the ones that don't match anything
+args=""
+RDN=0
 # now go thru the args again to add the add/modify/delete commands
-set -- $args
+#set -- $args
 while [ $# -ne 0 ]; do
 	case "$1" in
 	-a)
+		if [ ${RDN} -eq 0 ]; then
+			echo "must specify -r first"
+			usage
+			exit 1
+		fi
 		kv=$2
 		key=`echo $kv | cut -f1 -d=`
 		val=`echo $kv | cut -f2- -d=`
@@ -102,6 +65,11 @@ while [ $# -ne 0 ]; do
 		echo "-" >>${TEMP}
 		shift; shift;;
 	-d)
+		if [ ${RDN} -eq 0 ]; then
+			echo "must specify -r first"
+			usage
+			exit 1
+		fi
 		kv=$2
 		key=`echo $kv | cut -f1 -d=`
 		val=`echo $kv | cut -f2- -s -d=`
@@ -112,6 +80,11 @@ while [ $# -ne 0 ]; do
 		echo "-" >>${TEMP}
 		shift; shift;;
 	-m)
+		if [ ${RDN} -eq 0 ]; then
+			echo "must specify -r first"
+			usage
+			exit 1
+		fi
 		kv=$2
 		key=`echo $kv | cut -f1 -d=`
 		val=`echo $kv | cut -f2- -d=`
@@ -120,13 +93,28 @@ while [ $# -ne 0 ]; do
 		echo "-" >>${TEMP}
 		shift; shift;;
 	-o)
+		out_file=$2
 		shift; shift;;
 	-r)
+		if [ ${RDN} -eq 0 ]; then
+			RDN=1
+			echo "dn: $2" >>${TEMP}
+			echo "changetype: modify" >>${TEMP}
+		else
+			echo "record DN already specified"
+			usage
+			exit 1
+		fi
 		shift; shift;;
 	--)
 		shift; break;;
+	*)
+		# noting matched... save for later
+		args="${args} $1"
+		shift;;
 	esac
 done
+set -- $args
 
 if [ -z "$out_file" ];then
 	cat ${TEMP}
