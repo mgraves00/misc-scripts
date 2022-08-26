@@ -1,3 +1,3 @@
-# hostname pubkey  psk  address/mask port
-server1 xxxxxxx yyyyyy 192.0.2.1/32 54321
-client1 xxxxxxx yyyyyy 192.0.2.10/32
+# interface hostname pubkey  psk  port address/mask [address/mask]
+wg0 server1 public_key pre_shared_key 54321 192.0.2.0/24 2001:db8::/32
+wg0 client1 public_key pre_shared_key 54321 0.0.0.0/0 ::/0
