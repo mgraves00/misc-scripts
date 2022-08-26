@@ -34,14 +34,33 @@ if [ ! -f $WGPEERFILE ]; then
   exit 0
 fi
 
-egrep -v "^#" $WGPEERFILE | while read name pub psk addr port rest; do
+# routing handled by ifstated
+
+# loop thru peers file and construct ifconfig command
+egrep -v "^#" $WGPEERFILE | while read intf name pub psk port addrs; do
   _cmd=""
-  if [ ! -z "$pub" -a ! -z "$psk" -a ! -z "$addr" ]; then
-    _cmd="$_cmd wgpeer $pub wgpsk $psk wgaip $addr"
+  [[ "$intf" != "$1" ]] && continue
+  if [ ! -z "$pub" -a ! -z "$psk" ]; then
+    _cmd="$_cmd wgpeer $pub wgpsk $psk"
+  fi
+  if [ ! -z "$addrs" ]; then
+    for addr in $addrs; do
+      _cmd="$_cmd wgaip $addr"
+    done
   fi
   if [ ! -z "$name" -a ! -z "$port" ]; then
-    _cmd="$_cmd wgendpoint $name $port"
+    # if name == network then the port has alerady been set ... so skip
+    if [ "$name" != "network" ]; then
+      # get the IPv4 Address
+      haddr=`host -tA $name | awk '{ print $4 }'`
+      if [ $? -eq 1 ]; then
+        echo "failed to find address for $name. Aborting"
+        exit 1
+      fi
+      _cmd="$_cmd wgendpoint $haddr $port"
+    fi
   fi
   ifconfig $1 $_cmd
 done
+
 exit 0
