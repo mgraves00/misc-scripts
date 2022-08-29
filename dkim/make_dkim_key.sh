@@ -36,7 +36,7 @@ fi
 
 (umask 337; openssl genrsa -out $1.key $KEYLEN)
 openssl rsa -in $1.key -pubout -out $1.pub
-chgrp _smtpd $1.pub
+group info _dkimsign >/dev/null && chgrp _dkimsign $1.key
 echo "add the $1.dns to the zone file"
 echo "selector1._domainkey.$1. 3600 IN TXT \"v=DKIM1; k=rsa; p=$(sed -e '1d' -e '$d' $1.pub | tr -d '\n')\"" >$1.dns
 
