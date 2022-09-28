@@ -26,12 +26,13 @@ TABLES=""
 LOOP=1
 SLEEP_TIME=5
 DAEMONIZE=1
+BASENAME=$(basename $0)
 
 log_info() {
 	if [ ${DAEMONIZE} -eq 1 ]; then
-		logger -i -p daemon.info -t $(basename $0) "$*"
+		logger -i -p daemon.info -t ${BASENAME} "$*"
 	else
-		echo "$(basename $0): $*"
+		echo "${BASENAME}: $*"
 	fi
 }
 
@@ -65,7 +66,7 @@ route_del() {
 }
 
 die() {
-	echo "$(basename "$0"): $2" >&2
+	echo "${BASENAME}: $2" >&2
 	exit "$1"
 }
 
@@ -99,7 +100,7 @@ daemon() {
 }
 
 syntax() {
-	echo "$(basename $0) [-hdx] [-s sleep_time] <-t table:ASN:LOCAL>..."
+	echo "${BASENAME} [-dh] [-s sleep_time] <-t table:ASN:LOCAL>..."
 }
 
 args=`getopt dhs:t: $*`
