@@ -1,0 +1,147 @@
+#!/bin/sh
+
+# MIT License
+#
+# Copyright (c) 2022 Michael Graves
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+TABLES=""
+LOOP=1
+SLEEP_TIME=5
+DAEMONIZE=1
+
+log_info() {
+	if [ ${DAEMONIZE} -eq 1 ]; then
+		logger -i -p daemon.info -t $(basename $0) "$*"
+	else
+		echo "$(basename $0): $*"
+	fi
+}
+
+table_init() {
+	local _tablef="/var/db/${1}"
+	[[ -z "$1" ]] && return 1
+	pfctl -t ${1} -T show >/dev/null || return 1
+	if [ ! -f ${_tablef}.last ]; then
+		touch ${_tablef}.last
+	fi
+	return 0
+}
+
+table_list() {
+	pfctl -t $1 -T show
+}
+
+table_diff() {
+	local _tablef="/var/db/${1}"
+	table_list $1 >${_tablef}.new
+	diff ${_tablef}.last ${_tablef}.new >${_tablef}.diff
+}
+
+route_add() {
+	log_info "Adding record $1"
+	bgpctl network add $1 community $ASN >/dev/null
+}
+route_del() {
+	log_info "Removing record $1"
+	bgpctl network delete $1 >/dev/null
+}
+
+die() {
+	echo "$(basename "$0"): $2" >&2
+	exit "$1"
+}
+
+cleanup() {
+	LOOP=0
+	exit
+}
+
+daemon() {
+	trap cleanup HUP TERM KILL EXIT ABRT QUIT INT
+	log_info "Entering Daemon"
+	while [ ${LOOP} -eq 1 ]; do
+		for TASN in ${TABLES}; do
+			TABLE=$(echo ${TASN} | cut -f1 -d:)
+			ASN=$(echo ${TASN} | cut -f2- -d:)
+			table_diff ${TABLE}
+			# records to add
+			cat /var/db/${TABLE}.diff | sed -n 's/^>\(.*\)/\1/p' | while read -r addr; do
+				route_add $addr $ASN
+			done
+			# records to remove
+			cat /var/db/${TABLE}.diff | sed -n 's/^<\(.*\)/\1/p' | while read -r addr; do
+				route_del $addr
+			done
+			[[ -f /var/db/${TABLE}.new ]] && mv -f /var/db/${TABLE}.new /var/db/${TABLE}.last
+			[[ -f /var/db/${TABLE}.diff ]] && rm -f /var/db/${TABLE}.diff
+		done
+		sleep ${SLEEP_TIME}
+	done
+	log_info "Exiting Daemon"
+}
+
+syntax() {
+	echo "$(basename $0) [-hdx] [-s sleep_time] <-t table:ASN:LOCAL>..."
+}
+
+args=`getopt dhs:t: $*`
+if [ $? -ne 0 ]; then
+	die 0 "error parsing args"
+fi
+set -- $args
+while [ $# -ne 0 ]; do
+	case "$1" in
+		-d)
+			DAEMONIZE=0
+			shift;;
+		-h)
+			syntax
+			exit;;
+		-t)
+			TABLES="${TABLES} $2"; shift; shift;;
+		-s)
+			SLEEP="$2"; shift; shift;;
+		--)
+			shift; break;;
+	esac
+done
+
+if [ -z "${TABLES}" ]; then
+	echo "no table specified"
+	syntax
+	exit 1
+fi
+
+# check that tables exists
+for TASN in ${TABLES}; do
+	TABLE=$(echo ${TASN} | cut -f1 -d:)
+	table_init ${TABLE} || die 99 "table_init: ${TABLE} not found"
+done
+
+if [ ${DAEMONIZE} -eq 1 ]; then
+	# start daemon process
+	(cd /; 0</dev/null; >/dev/null; daemon) &
+else
+	daemon
+fi
+
+exit 0
+
