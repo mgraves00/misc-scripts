@@ -139,7 +139,7 @@ done
 
 if [ ${DAEMONIZE} -eq 1 ]; then
 	# start daemon process
-	(cd /; 0</dev/null; >/dev/null; daemon) &
+	(cd /; 0<&-; 1>&-; 2>&-; daemon) &
 else
 	daemon
 fi
