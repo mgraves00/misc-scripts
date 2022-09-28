@@ -10,10 +10,10 @@ watchtabled [-dh] [-s sleep_time ] <-t pftable:ASN:LOCAL>...
 
 ## Arguments
 
--d		Do not daemonize
--h		Syntax help
--s		Sleep time in seconds (default: 30)
--t		PF table to watch and the ASN:Local value to add as a community
+- -d		Do not daemonize
+- -h		Syntax help
+- -s		Sleep time in seconds (default: 30)
+- -t		PF table to watch and the ASN:Local value to add as a community
 
 ## Bugs
 
