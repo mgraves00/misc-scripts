@@ -32,7 +32,7 @@ cleanup() {
 }
 
 usage() {
-	echo "${0##*/} -r record_dn [-o output.ldif] [[-m key=val] [-d key] [-a key=val]...]"
+	echo "${0##*/} [-h] -r record_dn [-o output.ldif] [[-m key=val] [-d key] [-a key=val]...]"
 }
 
 trap cleanup EXIT
@@ -79,6 +79,10 @@ while [ $# -ne 0 ]; do
 		fi
 		echo "-" >>${TEMP}
 		shift; shift;;
+	-h)
+		usage
+		exit 0
+		shift;;
 	-m)
 		if [ ${RDN} -eq 0 ]; then
 			echo "must specify -r first"
