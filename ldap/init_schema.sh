@@ -37,7 +37,7 @@ cleanup() {
 }
 
 usage() {
-	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-b base_dn] [-o out.ldif] <domain.name>"
+	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-o out.ldif] <domain.name>"
 }
 if [ -f "./ENV" ]; then
 	. ./ENV

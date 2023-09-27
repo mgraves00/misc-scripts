@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 usage() {
-	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-b base_dn]"
+	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host]"
 }
 if [ -f "./ENV" ]; then
 	. ./ENV

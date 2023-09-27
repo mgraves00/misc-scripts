@@ -54,7 +54,7 @@ salted_pass() {
 }
 
 usage() {
-	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-b base_dn] [-o out.ldif] <username> [pass]"
+	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-o out.ldif] <username> [pass]"
 }
 if [ -f "./ENV" ]; then
 	. ./ENV
