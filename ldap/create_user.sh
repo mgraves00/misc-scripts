@@ -53,6 +53,24 @@ salted_pass() {
 	return 0
 }
 
+last_uid() {
+	_lhost=$1; shift
+	_bdn=$1; shift
+	_admindn=$1; shift
+	_pass=$1
+	luid=`ldapsearch -x ${_pass} -H ${_lhost} -b ou=people,${_bdn} -D ${_admindn} "(uid=*)" uidNumber | grep ^uidNumber | cut -f2 -d" " | sort -u | tail -1`
+	echo $luid
+}
+
+last_gid() {
+	_lhost=$1; shift
+	_bdn=$1; shift
+	_admindn=$1; shift
+	_pass=$1
+	lgid=`ldapsearch -x ${_pass} -H ${_lhost} -b ou=people,${_bdn} -D ${_admindn} "(uid=*)" gidNumber | grep ^gidNumber | cut -f2 -d" " | sort -u | tail -1`
+	echo $lgid
+}
+
 usage() {
 	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-N domain ] [-o out.ldif] <username> [pass]"
 }
@@ -109,9 +127,19 @@ TEMP=`mktemp`
 
 fname=""
 lname=""
-#XXX figure out way to find the next UID/GID
-uid=2000
-gid=2000
+# find the last uid/gid allocated and then add onne more
+uid=`last_uid ${LDAP_HOST} ${BASE_DN} ${ADMIN_DN} "${pass}"`
+gid=`last_gid ${LDAP_HOST} ${BASE_DN} ${ADMIN_DN} "${pass}"`
+if [ -z "$uid" ]; then
+	uid=2000
+else
+	uid=$(($uid+1))
+fi
+if [ -z "$gid" ]; then
+	gid=2000
+else
+	gid=$(($gid+1))
+fi
 
 if [ -z "$2" ]; then
 	ask_pass
