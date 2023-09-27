@@ -54,12 +54,12 @@ salted_pass() {
 }
 
 usage() {
-	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-o out.ldif] <username> [pass]"
+	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-N domain ] [-o out.ldif] <username> [pass]"
 }
 if [ -f "./ENV" ]; then
 	. ./ENV
 fi
-args=`getopt b:D:H:ho: $*`
+args=`getopt b:D:H:N:ho: $*`
 if [ $? -ne 0 ]; then
 	echo "error with args"
 	usage
@@ -81,6 +81,9 @@ while [ $# -ne 0 ]; do
 	-H)
 		LDAP_HOST=$2
 		shift; shift;;
+	-N)
+		DOMAIN_NAME=$2
+		shift; shift;;
 	-o)
 		out_file="$2"
 		shift; shift;;
@@ -88,7 +91,7 @@ while [ $# -ne 0 ]; do
 		shift; break;;
 	esac
 done
-if [ -z "${LDAP_HOST}" -o -z "${ADMIN_DN}" -o -z "${BASE_DN}" ]; then
+if [ -z "${LDAP_HOST}" -o -z "${ADMIN_DN}" -o -z "${BASE_DN}" -o -z "${DOMAIN_NAME}" ]; then
 	echo "error missing args"
 	usage
 	exit 2
