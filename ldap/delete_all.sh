@@ -58,7 +58,7 @@ while [ $# -ne 0 ]; do
 		shift; break;;
 	esac
 done
-if [ -z ${LDAP_HOST} -o -z ${ADMIN_DN} -o -z ${BASE_DN} ]; then
+if [ -z "${LDAP_HOST}" -o -z "${ADMIN_DN}" -o -z "${BASE_DN}" ]; then
 	echo "error missing args"
 	usage
 	exit 2
