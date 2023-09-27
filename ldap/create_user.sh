@@ -58,7 +58,7 @@ last_uid() {
 	_bdn=$1; shift
 	_admindn=$1; shift
 	_pass=$1
-	luid=`ldapsearch -x ${_pass} -H ${_lhost} -b ou=people,${_bdn} -D ${_admindn} "(uid=*)" uidNumber | grep ^uidNumber | cut -f2 -d" " | sort -u | tail -1`
+	luid=`ldapsearch -x ${_pass} -H ${_lhost} -b ou=people,${_bdn} -D ${_admindn} "(uid=*)" uidNumber 2>/dev/null | grep ^uidNumber | cut -f2 -d" " | sort -u | tail -1`
 	echo $luid
 }
 
@@ -67,22 +67,23 @@ last_gid() {
 	_bdn=$1; shift
 	_admindn=$1; shift
 	_pass=$1
-	lgid=`ldapsearch -x ${_pass} -H ${_lhost} -b ou=people,${_bdn} -D ${_admindn} "(uid=*)" gidNumber | grep ^gidNumber | cut -f2 -d" " | sort -u | tail -1`
+	lgid=`ldapsearch -x ${_pass} -H ${_lhost} -b ou=people,${_bdn} -D ${_admindn} "(uid=*)" gidNumber 2>/dev/null | grep ^gidNumber | cut -f2 -d" " | sort -u | tail -1`
 	echo $lgid
 }
 
 usage() {
-	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-N domain ] [-o out.ldif] <username> [pass]"
+	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-N domain ] [-o out.ldif] [-t [CRYPT]|SSHA] <username> [pass]"
 }
 if [ -f "./ENV" ]; then
 	. ./ENV
 fi
-args=`getopt b:D:H:N:ho: $*`
+args=`getopt b:D:H:N:ho:t: $*`
 if [ $? -ne 0 ]; then
 	echo "error with args"
 	usage
 	exit 2
 fi
+ptype=CRYPT
 set -- $args
 # search for -u first... save rest for later
 while [ $# -ne 0 ]; do
@@ -104,6 +105,20 @@ while [ $# -ne 0 ]; do
 		shift; shift;;
 	-o)
 		out_file="$2"
+		shift; shift;;
+	-t)
+		t=`echo $2 | tr [a-z] [A-Z]`
+		case $t in
+			CRYPT)
+				ptype=CRYPT;;
+			SSHA)
+				ptype=SSHA;;
+			*)
+				echo "unknown type $2"
+				usage
+				exit 1
+				;;
+		esac
 		shift; shift;;
 	--)
 		shift; break;;
@@ -144,7 +159,8 @@ fi
 if [ -z "$2" ]; then
 	ask_pass
 #	pass=`salted_pass $resp`
-	pass=`encrypt $resp`
+#	pass=`encrypt $resp`
+	pass=$resp
 	ask "First Name" "First $1"
 	fname=$resp
 	ask "Last Name" "Last $1"
@@ -152,12 +168,17 @@ if [ -z "$2" ]; then
 	ask "Home path" "/home/$1"
 else
 #	pass=`salted_pass $2`
-	pass=`encrypt $2`
+#	pass=`encrypt $2`
+	pass=$2
 	fname=$1
 	lname="user"
 	home="/var/mail/vmail"
 fi
 
+case $ptype in
+	CRYPT) pass="{CRYPT}$(encrypt $pass)" ;;
+	SSHA) pass=`salted_pass $pass` ;;
+esac
 cat << EOF > $TEMP
 #
 # Create User $1
@@ -175,8 +196,8 @@ homeDirectory: $home
 givenName: $fname
 displayName: $fname $lname
 mail: $1@$DOMAIN_NAME
-userPassword: {CRYPT}$pass
-description: $pass
+userPassword: $pass
+#description: $pass
 EOF
 
 if [ -z "$out_file" ]; then
