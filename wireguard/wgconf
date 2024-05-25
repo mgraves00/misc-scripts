@@ -1,0 +1,7 @@
+# Example wgconf file.
+# place in local directory or in $HOME and rename to .wgconf
+SERVER_PUBKEY=<server public key>
+SERVER=<server name>
+SERVER_PORT=<server port>
+CLIENT_DNS=<client DNS>
+SERVER_ALLOWED_IPS="<Allowed IP address ranges... space separated>"
