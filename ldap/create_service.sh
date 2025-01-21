@@ -115,7 +115,7 @@ cat << EOF > $TEMP
 #
 # Create Service $1
 #
-dn: cn=$1,ou=service,$BASE_DN
+dn: cn=$1,ou=services,$BASE_DN
 objectclass: person
 cn: $1
 sn: $1
