@@ -2,6 +2,7 @@
 
 # MIT License
 # 
+# Copyright (c) 2025 mgraves00
 # Copyright (c) 2022 mgraves00
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -27,11 +28,27 @@ domain_name=""
 BASE_DN=""
 out_file=""
 
+find_env() {
+	LIST="/etc/ldap.env \
+		/etc/openldap/ldap.env \
+		/usr/local/etc/ldap.env \
+		$HOME/.ldap.env"
+	for f in ${LIST} ; do
+		if [ -f "$f" ]; then
+			echo $f
+			return
+		fi
+	done
+	echo ""
+	return
+}
+
 dom_part() {
 	local _p=$1 _dn=$2
 	res=`echo $_dn | cut -f$_p -d'.'`
 	echo $res
 }
+
 cleanup() {
 	[[ -f "$TEMP" ]] && rm -f $TEMP
 }
@@ -39,8 +56,10 @@ cleanup() {
 usage() {
 	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-b base_dn] [-o out.ldif] <domain.name>"
 }
-if [ -f "./ENV" ]; then
-	. ./ENV
+
+ENV=$(find_env)
+if [ ! -z "${ENV}" -a -f "${ENV}" ]; then
+		. ${ENV}
 fi
 args=`getopt b:D:H:ho: $*`
 if [ $? -ne 0 ]; then
@@ -49,7 +68,6 @@ if [ $? -ne 0 ]; then
 	exit 2
 fi
 set -- $args
-# search for -u first... save rest for later
 while [ $# -ne 0 ]; do
 	case "$1" in
 	-b)
@@ -135,16 +153,6 @@ dn: dc=$domain_name,ou=domains,$BASE_DN
 objectclass: domain
 dc: $domain_name
 description: Main domain
-
-dn: cn=everybody,ou=groups,$BASE_DN
-objectclass: groupOfNames
-cn: everybody
-description: All Users
-
-dn: cn=ldap_admins,ou=groups,$BASE_DN
-objectclass: groupOfNames
-cn: ldap_admins
-description: LDAP Admins
 
 EOF
 

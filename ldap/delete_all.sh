@@ -2,6 +2,7 @@
 
 # MIT License
 # 
+# Copyright (c) 2025 mgraves00
 # Copyright (c) 2022 mgraves00
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -22,13 +23,29 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+find_env() {
+	LIST="/etc/ldap.env \
+		/etc/openldap/ldap.env \
+		/usr/local/etc/ldap.env \
+		$HOME/.ldap.env"
+	for f in ${LIST} ; do
+		if [ -f "$f" ]; then
+			echo $f
+			return
+		fi
+	done
+	echo ""
+	return
+}
+
 usage() {
 	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-b base_dn]"
 }
-if [ -f "./ENV" ]; then
-	. ./ENV
-fi
 pass="-W"
+ENV=$(find_env)
+if [ ! -z "${ENV}" -a -f "${ENV}" ]; then
+		. ${ENV}
+fi
 args=`getopt b:D:H:hw: $*`
 if [ $? -ne 0 ]; then
 	echo "error with args"
@@ -36,7 +53,6 @@ if [ $? -ne 0 ]; then
 	exit 2
 fi
 set -- $args
-# search for -u first... save rest for later
 while [ $# -ne 0 ]; do
 	case "$1" in
 	-b)
