@@ -2,6 +2,7 @@
 
 # MIT License
 # 
+# Copyright (c) 2025 mgraves00
 # Copyright (c) 2022 mgraves00
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -26,14 +27,30 @@ ADMIN_DN=""
 BASE_DN=""
 LDAP_HOST=""
 
+find_env() {
+	LIST="/etc/ldap.env \
+		/etc/openldap/ldap.env \
+		/usr/local/etc/ldap.env \
+		$HOME/.ldap.env"
+	for f in ${LIST} ; do
+		if [ -f "$f" ]; then
+			echo $f
+			return
+		fi
+	done
+	echo ""
+	return
+}
+
 cleanup() {
 }
 
 usage() {
 	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-b base_dn] <file.ldif>"
 }
-if [ -f "./ENV" ]; then
-	. ./ENV
+ENV=$(find_env)
+if [ ! -z "${ENV}" -a -f "${ENV}" ]; then
+		. ${ENV}
 fi
 args=`getopt b:D:H:hw: $*`
 if [ $? -ne 0 ]; then
