@@ -72,22 +72,29 @@ last_gid() {
 }
 
 usage() {
-	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] [-N domain ] [-o out.ldif] [-t [CRYPT]|SSHA] <username> [pass]"
+	echo "${0##*/} [-h] [-b base_dn] [-D admin_dn] [-H ldap_host] <-N domain > [-o out.ldif] \
+		[-u uid] [-g gid] -[[a alias]...] [-t [CRYPT]|SSHA] <username> [pass]"
 }
 if [ -f "./ENV" ]; then
 	. ./ENV
 fi
-args=`getopt b:D:H:N:ho:t: $*`
+args=`getopt a:b:D:H:hg:N:o:t:w:u: $*`
 if [ $? -ne 0 ]; then
 	echo "error with args"
 	usage
 	exit 2
 fi
-ptype=CRYPT
+ptype="-W"
+aliases=""
+uid=""
+gid=""
 set -- $args
 # search for -u first... save rest for later
 while [ $# -ne 0 ]; do
 	case "$1" in
+	-a)
+		aliases=`printf "emailAlias: %s\n%s" $2 "$aliases"`
+		shift; shift;;
 	-b)
 		BASE_DN=$2
 		shift; shift;;
@@ -99,6 +106,9 @@ while [ $# -ne 0 ]; do
 		exit 0;;
 	-H)
 		LDAP_HOST=$2
+		shift; shift;;
+	-g)
+		gid=$2
 		shift; shift;;
 	-N)
 		DOMAIN_NAME=$2
@@ -119,6 +129,12 @@ while [ $# -ne 0 ]; do
 				exit 1
 				;;
 		esac
+		shift; shift;;
+	-w)
+		pass="-w $2"
+		shift; shift;;
+	-u)
+		uid=$2
 		shift; shift;;
 	--)
 		shift; break;;
@@ -142,25 +158,27 @@ TEMP=`mktemp`
 
 fname=""
 lname=""
-# find the last uid/gid allocated and then add onne more
-uid=`last_uid ${LDAP_HOST} ${BASE_DN} ${ADMIN_DN} "${pass}"`
-gid=`last_gid ${LDAP_HOST} ${BASE_DN} ${ADMIN_DN} "${pass}"`
 if [ -z "$uid" ]; then
-	uid=2000
-else
-	uid=$(($uid+1))
+	uid=`last_uid ${LDAP_HOST} ${BASE_DN} ${ADMIN_DN} "${pass}"`
+	if [ -z "$uid" ]; then
+		uid=2000
+	else
+		uid=$(($uid+1))
+	fi
 fi
 if [ -z "$gid" ]; then
-	gid=2000
-else
-	gid=$(($gid+1))
+	gid=`last_gid ${LDAP_HOST} ${BASE_DN} ${ADMIN_DN} "${pass}"`
+	if [ -z "$gid" ]; then
+		gid=2000
+	else
+		gid=$(($gid+1))
+	fi
 fi
 
 if [ -z "$2" ]; then
 	ask_pass
 #	pass=`salted_pass $resp`
-#	pass=`encrypt $resp`
-	pass=$resp
+	pass=`encrypt $resp`
 	ask "First Name" "First $1"
 	fname=$resp
 	ask "Last Name" "Last $1"
@@ -168,8 +186,7 @@ if [ -z "$2" ]; then
 	ask "Home path" "/home/$1"
 else
 #	pass=`salted_pass $2`
-#	pass=`encrypt $2`
-	pass=$2
+	pass=`encrypt $2`
 	fname=$1
 	lname="user"
 	home="/var/mail/vmail"
@@ -187,6 +204,7 @@ dn: uid=$1,ou=people,$BASE_DN
 objectclass: person
 objectclass: inetOrgPerson
 objectclass: posixAccount
+objectclass: emailAccount
 uid: $1
 cn: $fname
 sn: $lname
@@ -195,9 +213,10 @@ gidNumber: $gid
 homeDirectory: $home
 givenName: $fname
 displayName: $fname $lname
-mail: $1@$DOMAIN_NAME
+mail: $1@${DOMAIN_NAME}
 userPassword: $pass
-#description: $pass
+description: $pass
+$aliases
 EOF
 
 if [ -z "$out_file" ]; then
