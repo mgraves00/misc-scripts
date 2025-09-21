@@ -1,0 +1,511 @@
+#!/bin/sh
+
+# MIT License
+# 
+# Copyright (c) 2022 mgraves00
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+resp=""
+out_file=""
+
+find_env() {
+	LIST="/etc/ldap.env \
+		/etc/openldap/ldap.env \
+		/usr/local/etc/ldap.env \
+		$HOME/.ldap.env"
+	for f in ${LIST} ; do
+		if [ -f "$f" ]; then
+			echo $f
+			return
+		fi
+	done
+	echo ""
+	return
+}
+
+cleanup() {
+	if [ -f "$TEMP" ]; then
+		rm -f $TEMP
+	fi
+}
+
+ask() {
+	local _q=$1 _d=$2
+	echo -n "$_q [$_d]: "
+	read resp
+	resp=${resp:=$_d}
+	return
+}
+
+ask_pass() {
+	echo -n "enter password (will not echo):"
+	stty -echo
+	IFS= read -r resp
+	stty echo
+	echo ""
+	return
+}
+
+encrypt_pass() {
+	if [ -z "$1" ]; then
+	       	return 1
+	fi
+	os=`uname -o`
+	case $os in
+		OpenBSD)
+			p=`encrypt $1` ;;
+		*)
+			p=$(/usr/local/bin/python3.11 -c 'import sys;import bcrypt;print("{}".format(bcrypt.hashpw(bytes(sys.argv[1],"ascii"), bcrypt.gensalt(10)).decode("ascii")))' "$1")
+			;;
+	esac
+	echo -n "$p"
+	return
+}
+
+salted_pass() {
+	if [ -z "$1" ]; then
+	       	return 1
+	fi
+	RND_SALT=`openssl rand -base64 6`
+	PASS_HASH=`echo -n "$1$RND_SALT" | openssl dgst -sha1 -binary | openssl enc -base64 -A`
+	LDAP_PASS_HASH=`(echo -n "$PASS_HASH" | openssl base64 -d -A; echo -n "$RND_SALT";) | openssl enc -base64 -A | awk '{print "{SSHA}"$0 }'`
+	echo $LDAP_PASS_HASH
+	return 0
+}
+
+last_uid() {
+	_lhost=$1; shift
+	_bdn=$1; shift
+	_admindn=$1; shift
+	_pass=$1
+	luid=`ldapsearch -x ${_pass} -H ${_lhost} -b ${USERS_OU},${_bdn} -D ${_admindn} "(uid=*)" uidNumber 2>/dev/null | grep ^uidNumber | cut -f2 -d" " | sort -u | tail -1`
+	echo $luid
+}
+
+last_gid() {
+	_lhost=$1; shift
+	_bdn=$1; shift
+	_admindn=$1; shift
+	_pass=$1
+	lgid=`ldapsearch -x ${_pass} -H ${_lhost} -b ${USERS_OU},${_bdn} -D ${_admindn} "(uid=*)" gidNumber 2>/dev/null | grep ^gidNumber | cut -f2 -d" " | sort -u | tail -1`
+	echo $lgid
+}
+
+usage() {
+	cat <<EOF
+${0##*/} [-h] <-w pass> [-b base_dn] [-D admin_dn] [-H ldap_host] [-N domain ] [-o out.ldif] <command> [command args]
+Commands:
+  add      add a new user
+  mod      modify a users arguments
+  del      delete a user
+  list     list current users
+  show     show a users attributes
+  passwd   set the users password
+
+Options:
+  add	<username> [-t [CRYPT]|SSHA] [password]
+  mod	<username | uid> <[-a|-d|-m] key=val>...
+  del	<username | uid>
+  show	<username | uid> [[field] [field]... ]
+  list  [[field] [field]..]
+  passwd <username | uid> [-t [CRYPT|SSHA]] [password]
+EOF
+}
+
+get_kv() {
+	cnt=0
+	kv=""
+	while [ $# -ne 0 ]; do
+		case $1 in
+			-*)
+				break;
+				;;
+			*)
+				kv="$kv $1"
+				cnt=$((cnt+1))
+				shift
+				;;
+		esac
+	done
+	echo $kv
+	return $cnt
+}
+
+gen_uuid() {
+	local _arg=$1
+#	uuid=$(openssl rand -hex 16)
+#	echo ${uuid:0:8}-${uuid:8:4}-${uuid:12:4}-${uuid:16:4}-${uuid:20:12}
+        a1=$(openssl rand -hex 4)
+        a2=$(openssl rand -hex 2)
+        a3=$(openssl rand -hex 2)
+        a4=$(openssl rand -hex 2)
+        a5=$(openssl rand -hex 6)
+	case "${_arg}" in
+	-c) echo "${a1}${a2}${a3}${a4}${a5}" ;;
+	-x) echo "${a1}${a2}${a3}" ;;
+	*) echo "${a1}-${a2}-${a3}-${a4}-${a5}" ;;
+	esac
+}
+
+ENV=$(find_env)
+if [ ! -z "${ENV}" -a -f "${ENV}" ]; then
+	. ${ENV}
+fi
+
+args=`getopt b:D:H:N:ho:w: $*`
+if [ $? -ne 0 ]; then
+	echo "error with args"
+	usage
+	exit 2
+fi
+
+# set the defaults
+ptype=CRYPT
+USERS_OU=${USERS_OU:-"ou=people"}
+pass="-w ${ADMIN_PASS}"
+# keep out of the way of local accounts
+UNIX_UID_START=${UNIX_UID_START:-"5000"}
+UNIX_GID_START=${UNIX_GID_START:-"5000"}
+
+set -- $args
+# search for -u first... save rest for later
+while [ $# -ne 0 ]; do
+	case "$1" in
+	-b)
+		BASE_DN=$2
+		shift; shift;;
+	-D)
+		ADMIN_DN=$2
+		shift; shift;;
+	-h)
+		usage
+		exit 0;;
+	-H)
+		LDAP_HOST=$2
+		shift; shift;;
+	-N)
+		DOMAIN_NAME=$2
+		shift; shift;;
+	-o)
+		out_file="$2"
+		shift; shift;;
+	-w)
+		pass="-w $2"
+		shift; shift;;
+	--)
+		shift; break;;
+	esac
+done
+if [ -z "${LDAP_HOST}" -o -z "${ADMIN_DN}" -o -z "${BASE_DN}" -o -z "${DOMAIN_NAME}" ]; then
+	echo "error missing args"
+	usage
+	exit 2
+fi
+if [ -z "$pass" ]; then
+	echo "must specify a password"
+	usage
+	exit 2
+fi
+
+trap cleanup EXIT
+trap cleanup HUP
+trap cleanup ALRM
+TEMP=`mktemp`
+
+CMD=$1; shift;
+case "${CMD}" in
+	add)
+		if [ -z "$1" ]; then
+			echo "must specify a username"
+			exit 1
+		fi
+		user=$1; shift
+		args=`getopt t: $*`
+		if [ $? -ne 0 ]; then
+			echo "error with args"
+			usage
+			exit 2
+		fi
+		set -- $args
+		while [ $# -ne 0 ]; do
+			case "$1" in
+			-t)
+				t=`echo $2 | tr [a-z] [A-Z]`
+				case $t in
+					CRYPT)
+						ptype=CRYPT;;
+					SSHA)
+						ptype=SSHA;;
+					*)
+						echo "unknown type $2"
+						usage
+						exit 1
+						;;
+				esac
+				shift; shift;;
+			--)
+				shift; break;;
+			esac
+		done
+
+		fname=""
+		lname=""
+		if [ -z "$1" ]; then
+			ask_pass
+			upass=$resp
+			ask "First Name" "First $user"
+			fname=$resp
+			ask "Last Name" "Last $user"
+			lname=$resp
+			ask "Home path" "/home/$user"
+		else
+			upass=$1
+			fname=${user%%@*}
+			lname="user"
+			home="/home/$fname"
+		fi
+		mailpass=$(encrypt_pass ${upass})
+		case $ptype in
+			CRYPT) upass="{CRYPT}${mailpass}" ;;
+			SSHA) upass=$(salted_pass ${upass}) ;;
+		esac
+
+		# find the last unix_uid/unix_gid allocated and then add onne more
+		unix_uid=`last_uid ${LDAP_HOST} ${BASE_DN} ${ADMIN_DN} "${pass}"`
+		unix_gid=`last_gid ${LDAP_HOST} ${BASE_DN} ${ADMIN_DN} "${pass}"`
+		if [ -z "$unix_uid" ]; then
+			unix_uid=${UNIX_UID_START}
+		else
+			unix_uid=$(($unix_uid+1))
+		fi
+		if [ -z "$unix_gid" ]; then
+			unix_gid=${UNIX_GID_START}
+		else
+			unix_gid=$(($unix_gid+1))
+		fi
+
+		# now output template
+		uuid=$(gen_uuid -x)
+cat << EOF > $TEMP
+#
+# Create User $user1
+#
+dn: uid=$uuid,$USERS_OU,$BASE_DN
+objectclass: top
+objectclass: person
+objectclass: organizationalPerson
+objectclass: inetOrgPerson
+objectclass: posixAccount
+uid: $uuid
+cn: $fname
+sn: $lname
+uidNumber: $unix_uid
+gidNumber: $unix_gid
+homeDirectory: $home
+givenName: $fname
+displayName: $fname $lname
+mail: $user
+userPassword: $upass
+description: $mailpass
+EOF
+		ldapadd ${pass} -H ${LDAP_HOST} -D "${ADMIN_DN}" -f ${TEMP}
+		rc=$?
+		if [ $rc -ne 0 ]; then
+			echo "Error adding user"
+		fi
+		;;
+	mod)
+		if [ -z "$1" ]; then
+			echo "must specify a username"
+			exit 1
+		fi
+		user=$1; shift
+		dn=`ldapsearch -LLL -x ${pass} -H ${LDAP_HOST} -b ${USERS_OU},${BASE_DN} -D ${ADMIN_DN} "(|(uid=$user)(mail=$user))" dn`
+		dn=`echo $dn | cut -f2 -d" "`
+		if [ -z "$dn" ]; then
+			echo "user $user not found"
+			exit 1
+		fi
+		echo "dn: $dn" >${TEMP}
+		echo "changetype: modify" >>${TEMP}
+		# getopt doesn't handle args with spaces.  too many shell interpertations
+		# so just run thru the args and save the ones that don't match anything
+		args=""
+		while [ $# -ne 0 ]; do
+			case "$1" in
+			-a)
+				shift;
+				kv=$(get_kv $*)
+				shift $?
+				key=`echo $kv | cut -f1 -d=`
+				val=`echo $kv | cut -f2- -d=`
+				echo "add: ${key}" >>${TEMP}
+				echo "${key}: ${val}" >>${TEMP}
+				echo "-" >>${TEMP}
+				;;
+			-d)
+				shift;
+				kv=$(get_kv $*)
+				shift $?
+				key=`echo $kv | cut -f1 -d=`
+				val=`echo $kv | cut -f2- -s -d=`
+				echo "delete: ${key}" >>${TEMP}
+				if [ ! -z "${val}" ]; then
+					echo "${key}: ${val}" >>${TEMP}
+				fi
+				echo "-" >>${TEMP}
+				;;
+			-m)
+				shift;
+				kv=$(get_kv $*)
+				shift $?
+				key=`echo $kv | cut -f1 -d=`
+				val=`echo $kv | cut -f2- -d=`
+				echo "replace: ${key}" >>${TEMP}
+				echo "${key}: ${val}" >>${TEMP}
+				echo "-" >>${TEMP}
+				;;
+			--)
+				shift; break;;
+			*)
+				# noting matched... save for later
+				args="${args} $1"
+				shift;;
+			esac
+		done
+		set -- $args
+		ldapmodify ${pass} -H ${LDAP_HOST} -D "${ADMIN_DN}" -f ${TEMP}
+		rc=$?
+		if [ $rc -ne 0 ]; then
+			echo "Error modifing user"
+		fi
+		;;
+	del)
+		if [ -z "$1" ]; then
+			echo "must specify a username"
+			exit 1
+		fi
+		user=$1; shift
+		dn=`ldapsearch -LLL -x ${pass} -H ${LDAP_HOST} -b ${USERS_OU},${BASE_DN} -D ${ADMIN_DN} "(|(uid=$user)(mail=$user))" dn`
+		dn=`echo $dn | cut -f2 -d" "`
+		if [ -z "$dn" ]; then
+			echo "user $user not found"
+			exit 1
+		fi
+		ldapdelete -x ${pass} -H ${LDAP_HOST} -D ${ADMIN_DN} "$dn"
+		rc=$?
+		if [ $rc -ne 0 ]; then
+			echo "Error deleting user"
+		fi
+		;;
+	show)
+		if [ -z "$1" ]; then
+			echo "must specify a username"
+			exit 1
+		fi
+		user=$1; shift
+		ldapsearch -LLL -x ${pass} -H ${LDAP_HOST} -b ${USERS_OU},${BASE_DN} -D ${ADMIN_DN} "(|(uid=$user)(mail=$user))" $*
+		rc=$?
+		;;
+	list)
+		ldapsearch -LLL -x ${pass} -H ${LDAP_HOST} -b ${USERS_OU},${BASE_DN} -D ${ADMIN_DN} "(uid=*)" $*
+		rc=$?
+		;;
+	passwd)
+		if [ -z "$1" ]; then
+			echo "must specify a username"
+			exit 1
+		fi
+		user=$1; shift
+		args=`getopt t: $*`
+		if [ $? -ne 0 ]; then
+			echo "error with args"
+			usage
+			exit 2
+		fi
+		set -- $args
+		while [ $# -ne 0 ]; do
+			case "$1" in
+			-t)
+				t=`echo $2 | tr [a-z] [A-Z]`
+				case $t in
+					CRYPT)
+						ptype=CRYPT;;
+					SSHA)
+						ptype=SSHA;;
+					*)
+						echo "unknown type $2"
+						usage
+						exit 1
+						;;
+				esac
+				shift; shift;;
+			--)
+				shift; break;;
+			esac
+		done
+		if [ -z "$1" ]; then
+			ask_pass
+			upass=$resp
+		else
+			upass=$1
+		fi
+		mailpass=$(encrypt_pass "$upass")
+		case $ptype in
+			CRYPT) upass="{CRYPT}${mailpass}" ;;
+			SSHA) upass=$(salted_pass "${upass}") ;;
+		esac
+		dn=`ldapsearch -LLL -x ${pass} -H ${LDAP_HOST} -b ${USERS_OU},${BASE_DN} -D ${ADMIN_DN} "(|(uid=$user)(mail=$user))" dn`
+		dn=`echo $dn | cut -f2 -d" "`
+		if [ -z "$dn" ]; then
+			echo "user $user not found"
+			exit 1
+		fi
+		echo "dn: $dn" >${TEMP}
+		echo "changetype: modify" >>${TEMP}
+		echo "replace: userPassword" >>${TEMP}
+		echo "userPassword: ${upass}" >>${TEMP}
+		echo "-" >>${TEMP}
+		echo "replace: description" >>${TEMP}
+		echo "description: ${mailpass}" >>${TEMP}
+		echo "-" >>${TEMP}
+		ldapmodify ${pass} -H ${LDAP_HOST} -D "${ADMIN_DN}" -f ${TEMP}
+		rc=$?
+		if [ $rc -ne 0 ]; then
+			echo "Error modifing password"
+		fi
+		;;
+	*)
+		echo "unknown command ${CMD}"
+		usage
+		rc=1
+		;;
+esac
+
+
+# output what we have
+# TEMP will be cleaned up when we exit
+#if [ -z "$out_file" ]; then
+#	cat ${TEMP}
+#else
+#	mv -f ${TEMP} $out_file
+#fi
+exit ${rc:-0}
+

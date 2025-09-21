@@ -1,0 +1,292 @@
+#!/bin/sh
+
+# MIT License
+# 
+# Copyright (c) 2022 mgraves00
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+resp=""
+out_file=""
+
+find_env() {
+	LIST="/etc/ldap.env \
+		/etc/openldap/ldap.env \
+		/usr/local/etc/ldap.env \
+		$HOME/.ldap.env"
+	for f in ${LIST} ; do
+		if [ -f "$f" ]; then
+			echo $f
+			return
+		fi
+	done
+	echo ""
+	return
+}
+
+cleanup() {
+	if [ -f "$TEMP" ]; then
+		rm -f $TEMP
+	fi
+}
+
+ask() {
+	local _q=$1 _d=$2
+	echo -n "$_q [$_d]: "
+	read resp
+	resp=${resp:=$_d}
+	return
+}
+
+# returns the number of args used
+find_user() {
+	if [ -z "$1" ]; then
+		echo ""
+		return 0
+	fi
+	dn=`ldapsearch -LLL -x ${pass} -H ${LDAP_HOST} -b ${USERS_OU},${BASE_DN} -D ${ADMIN_DN} "(uid=$1)" dn`
+	dn=`echo $dn | cut -f2 -d" "`
+	if [ -z "$dn" ]; then
+		echo ""
+		return 1
+	fi
+	echo $dn
+	return 1
+}
+
+# returns the number of args used
+find_group() {
+	if [ -z "$1" ]; then
+		echo ""
+		return 0
+	fi
+	dn=`ldapsearch -LLL -x ${pass} -H ${LDAP_HOST} -b ${GROUP_OU},${BASE_DN} -D ${ADMIN_DN} "(cn=$1)" dn`
+	dn=`echo $dn | cut -f2 -d" "`
+	if [ -z "$dn" ]; then
+		echo ""
+		return 1
+	fi
+	echo $dn
+	return 1
+}
+
+
+usage() {
+	cat <<EOF
+${0##*/} [-h] <-w pass> [-b base_dn] [-D admin_dn] [-H ldap_host] [-N domain ] [-o out.ldif] <command> [command args]
+Commands:
+  add      add a new group
+  mod      modify a groups arguments
+  del      delete a group
+  list     list current group
+  show     show a group attributes
+
+Options:
+  add	<groupname> <user> ...
+  mod	<groupname> <[-a|-d|-m] user>...
+  del	<groupname>
+  show	<groupname> [[field] [field]... ]
+  list  [[field] [field]..]
+EOF
+}
+
+ENV=$(find_env)
+if [ ! -z "${ENV}" -a -f "${ENV}" ]; then
+	. ${ENV}
+fi
+
+args=`getopt b:D:H:N:ho:w: $*`
+if [ $? -ne 0 ]; then
+	echo "error with args"
+	usage
+	exit 2
+fi
+
+# set the defaults
+ptype=CRYPT
+USERS_OU=${USERS_OU:-"ou=people"}
+GROUP_OU=${GROUP_OU:-"ou=groups"}
+pass="-w ${ADMIN_PASS}"
+
+set -- $args
+# search for -u first... save rest for later
+while [ $# -ne 0 ]; do
+	case "$1" in
+	-b)
+		BASE_DN=$2
+		shift; shift;;
+	-D)
+		ADMIN_DN=$2
+		shift; shift;;
+	-h)
+		usage
+		exit 0;;
+	-H)
+		LDAP_HOST=$2
+		shift; shift;;
+	-N)
+		DOMAIN_NAME=$2
+		shift; shift;;
+	-o)
+		out_file="$2"
+		shift; shift;;
+	-w)
+		pass="-w $2"
+		shift; shift;;
+	--)
+		shift; break;;
+	esac
+done
+if [ -z "${LDAP_HOST}" -o -z "${ADMIN_DN}" -o -z "${BASE_DN}" -o -z "${DOMAIN_NAME}" ]; then
+	echo "error missing args"
+	usage
+	exit 2
+fi
+if [ -z "$pass" ]; then
+	echo "must specify a password"
+	usage
+	exit 2
+fi
+
+trap cleanup EXIT
+trap cleanup HUP
+trap cleanup ALRM
+TEMP=`mktemp`
+
+CMD=$1; shift;
+case "${CMD}" in
+	add)
+		if [ -z "$1" ]; then
+			echo "must specify a groupname"
+			exit 1
+		fi
+		group=$1; shift
+		if [ $# -eq 0 ]; then
+			echo "must specify a user to create a group"
+			exit 1
+		fi
+cat << EOF > $TEMP
+#
+# Create Group $group
+#
+dn: cn=$group,$GROUP_OU,$BASE_DN
+objectclass: top
+objectclass: groupOfNames
+cn: $group
+EOF
+		while [ $# -ne 0 ]; do
+			dn=$(find_user $1)
+			echo "member: $dn" >> ${TEMP}
+			shift
+		done
+		# now output template
+		ldapadd ${pass} -H ${LDAP_HOST} -D "${ADMIN_DN}" -f ${TEMP}
+		rc=$?
+		if [ $rc -ne 0 ]; then
+			echo "Error adding user"
+		fi
+		;;
+	mod)
+		if [ -z "$1" ]; then
+			echo "must specify a groupname"
+			exit 1
+		fi
+		group=$1; shift
+		dn=$(find_group $group)
+		if [ -z "$dn" ]; then
+			echo "group $group not found"
+			exit 1
+		fi
+		echo "dn: $dn" >${TEMP}
+		echo "changetype: modify" >>${TEMP}
+		# getopt doesn't handle args with spaces.  too many shell interpertations
+		# so just run thru the args and save the ones that don't match anything
+		args=""
+		while [ $# -ne 0 ]; do
+			case "$1" in
+			-a)
+				shift;
+				val=$(find_user $1)
+				shift
+				echo "add: member" >>${TEMP}
+				echo "member: ${val}" >>${TEMP}
+				echo "-" >>${TEMP}
+				;;
+			-d)
+				shift;
+				val=$(find_user $1)
+				shift
+				echo "delete: member" >>${TEMP}
+				echo "member: ${val}" >>${TEMP}
+				echo "-" >>${TEMP}
+				;;
+			--)
+				shift; break;;
+			*)
+				# noting matched... save for later
+				args="${args} $1"
+				shift;;
+			esac
+		done
+		set -- $args
+		ldapmodify ${pass} -H ${LDAP_HOST} -D "${ADMIN_DN}" -f ${TEMP}
+		rc=$?
+		if [ $rc -ne 0 ]; then
+			echo "Error modifing group"
+		fi
+		;;
+	del)
+		if [ -z "$1" ]; then
+			echo "must specify a groupname"
+			exit 1
+		fi
+		group=$1; shift
+		dn=$(find_group $group)
+		if [ -z "$dn" ]; then
+			echo "group $group not found"
+			exit 1
+		fi
+		ldapdelete -x ${pass} -H ${LDAP_HOST} -D ${ADMIN_DN} "$dn"
+		rc=$?
+		if [ $rc -ne 0 ]; then
+			echo "Error deleting group"
+		fi
+		;;
+	show)
+		if [ -z "$1" ]; then
+			echo "must specify a groupname"
+			exit 1
+		fi
+		group=$1; shift
+		ldapsearch -LLL -x ${pass} -H ${LDAP_HOST} -b ${GROUP_OU},${BASE_DN} -D ${ADMIN_DN} "(cn=$group)" $*
+		rc=$?
+		;;
+	list)
+		ldapsearch -LLL -x ${pass} -H ${LDAP_HOST} -b ${GROUP_OU},${BASE_DN} -D ${ADMIN_DN} "(cn=*)" $*
+		rc=$?
+		;;
+	*)
+		echo "unknown command ${CMD}"
+		usage
+		rc=1
+		;;
+esac
+
+exit ${rc:-0}
+
