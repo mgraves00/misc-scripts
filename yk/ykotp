@@ -1,0 +1,173 @@
+#!/bin/sh
+#
+# MIT License
+#
+# Copyright (c) 2025 Michael Graves
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+TF=""
+SCR=""
+QUIET=0
+#XXX doesn't work. usbhidaction just listens for objects until ^C
+SINGLE=0
+NAME=${0##*/}
+
+function cleanup {
+	if [ ! -z ${TF} -a -f ${TF} ]; then
+		rm -f ${TF}
+	fi
+	if [ ! -z ${SCR} -a -f ${SCR} ]; then
+		rm -f ${SCR}
+	fi
+}
+
+function get_uhid {
+	for D in `dmesg | grep Yubico | egrep  "^uhidev[0-9]+" | cut -f1 -d" " | sort -u`; do
+		hid=`dmesg | egrep "uhid[0-9]+ at ${D}" | tail -1 | cut -f1 -d" "`
+		if [ ! -z ${hid} ]; then
+			echo ${hid}
+			return 0
+		fi
+	done
+	echo ""
+	return 1
+}
+
+function usage {
+	echo "${NAME} [-h] [-q]"
+}
+
+# parse args
+args=`getopt 1hq $*`
+if [ $? -ne 0 ]; then
+	echo usage
+	exit 2
+fi
+set -- $args
+while [ $# -ne 0 ]; do
+	case "$1" in
+		-h)
+			usage
+			exit 0
+			;;
+		-q)
+			QUIET=1; shift ;;
+#		-1)
+#			SINGLE=1; shift ;;
+		--)
+			shift; break ;;
+	esac
+done
+
+if [ `id -u` -ne 0 ]; then
+	echo "must run as root"
+	exit 1
+fi
+
+# setup the cleanup traps
+trap cleanup EXIT
+trap cleanup HUP
+trap cleanup INT
+trap cleanup QUIT
+trap cleanup ABRT
+trap cleanup TERM
+trap cleanup ALRM
+
+# find the yubikey uhidXX file
+hid=$(get_uhid)
+if [ -z "${hid}" ]; then
+	echo "could not find yubikey hid number"
+	exit 1
+fi
+# create the character device if it doesn't exist
+if [ ! -c /dev/${hid} ]; then
+	cd /dev && ./MAKEDEV ${hid}
+	if [ ! -c /dev/${hid} ]; then
+		echo "could not make /dev/${hid}"
+		exit 1
+	fi
+fi
+
+# create the output script
+SCR=`mktemp` || exit 1
+cat << EOF > ${SCR}
+#!/bin/sh
+case \$1 in
+    4)   o="a" ;;
+    5)   o="b" ;;
+    6)   o="c" ;;
+    7)   o="d" ;;
+    8)   o="e" ;;
+    9)   o="f" ;;
+    10)   o="g" ;;
+    11)   o="h" ;;
+    12)   o="i" ;;
+    13)   o="j" ;;
+    14)   o="k" ;;
+    15)   o="l" ;;
+    16)   o="m" ;;
+    17)   o="n" ;;
+    18)   o="o" ;;
+    19)   o="p" ;;
+    20)   o="q" ;;
+    21)   o="r" ;;
+    22)   o="s" ;;
+    23)   o="t" ;;
+    24)   o="u" ;;
+    25)   o="v" ;;
+    26)   o="w" ;;
+    27)   o="x" ;;
+    28)   o="y" ;;
+    29)   o="z" ;;
+    30)   o="1" ;;
+    31)   o="2" ;;
+    32)   o="3" ;;
+    33)   o="4" ;;
+    34)   o="5" ;;
+    35)   o="6" ;;
+    36)   o="7" ;;
+    37)   o="8" ;;
+    38)   o="9" ;;
+    39)   o="0" ;;
+    40)   o="\n";;
+    *)	o="" ;;
+esac
+printf "\$o"
+EOF
+chmod 700 ${SCR}
+
+# create the conf
+TF=`mktemp` || exit 1
+cat << EOF > ${TF}
+Generic_Desktop:Keyboard.Keyboard:No_Event * ${SCR} \$V
+EOF
+
+# run the command
+if [ ${QUIET} -eq 0 ]; then
+	echo -n "press YubiKey button..."
+	if [ ${SINGLE} -eq 0 ]; then
+		echo " ^C to exit"
+	else
+		echo ""
+	fi
+fi
+/usr/bin/usbhidaction -i -f /dev/${hid} -d -c ${TF} $*
+# somewhat redundant
+cleanup
