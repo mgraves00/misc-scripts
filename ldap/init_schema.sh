@@ -115,6 +115,11 @@ objectclass: organizationalUnit
 ou: people
 description: All people in organization
 
+dn: ou=systemaccounts,$BASE_DN
+objectclass: organizationalUnit
+ou: systemaccounts
+description: System accounts
+
 dn: ou=groups,$BASE_DN
 objectclass: organizationalUnit
 ou: groups
@@ -136,15 +141,15 @@ objectclass: domain
 dc: $domain_name
 description: Main domain
 
-dn: cn=everybody,ou=groups,$BASE_DN
-objectclass: groupOfNames
-cn: everybody
-description: All Users
-
-dn: cn=ldap_admins,ou=groups,$BASE_DN
-objectclass: groupOfNames
-cn: ldap_admins
-description: LDAP Admins
+#dn: cn=everybody,ou=groups,$BASE_DN
+#objectclass: groupOfNames
+#cn: everybody
+#description: All Users
+#
+#dn: cn=ldap_admins,ou=groups,$BASE_DN
+#objectclass: groupOfNames
+#cn: ldap_admins
+#description: LDAP Admins
 
 EOF
 
