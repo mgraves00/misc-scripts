@@ -2,6 +2,7 @@
 #
 # MIT License
 #
+# Copyright (c) 2026 Michael Graves
 # Copyright (c) 2024 Michael Graves
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -30,12 +31,12 @@ if [ -f ./.wgconf ]; then
 fi
 
 usage() {
-	echo "Usage: ${0##*/} [-d dns_server ] [-x server_pkey] [-k client_key ] [-s server_addr] [-p server_port] [-i allowed_ip ...] client_address"
+	echo "Usage: ${0##*/} [-c preshared_key] [-d dns_server ] [-x server_public_key] [-k client_priv_key ] [-s server_addr] [-p server_port] [-i allowed_ip ...] client_address/mask"
 }
 
 SERVER_ALLOWED_IPS=""
 CPRIV=""
-args=`getopt d:hi:k:p:s:x: $*`
+args=`getopt c:d:hi:k:p:s:x: $*`
 if [ $? -ne 0 ]; then
 	usage
 	exit 2
@@ -44,6 +45,8 @@ fi
 set -- $args
 while [ $# -ne 0 ]; do
 	case "$1" in
+		-c) PRESHARED_KEY=$2
+			shift; shift;;
 		-d)
 			CLIENT_DNS=$2
 			shift; shift;;
@@ -110,6 +113,7 @@ Address = ${CLIENT}
 
 [Peer]
 PublicKey = ${SERVER_PUBKEY}
+PresharedKey = ${PRESHARED_KEY}
 AllowedIPs = ${SERVER_ALLOWED_IPS}
 Endpoint = ${SERVER}:${SERVER_PORT}
 EOF
