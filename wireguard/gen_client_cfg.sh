@@ -51,7 +51,10 @@ while [ $# -ne 0 ]; do
 			CLIENT_DNS=$2
 			shift; shift;;
 		-i)
-			SERVER_ALLOWED_IPS="${SERVER_ALLOWED_IPS} $2"
+			if [ -z "${SERVER_ALLOWED_IPS}" ]; then
+				SERVER_ALLOWED_IPS="$2"
+			fi
+			SERVER_ALLOWED_IPS="${SERVER_ALLOWED_IPS},$2"
 			shift; shift;;
 		-h)
 			usage
@@ -107,14 +110,14 @@ if [ -z "$client_name" ]; then
 fi
 cat <<EOF >${client_name}.conf
 [Interface]
-PrivateKey = ${CPRIV}
-DNS = ${CLIENT_DNS}
-Address = ${CLIENT}
+PrivateKey=${CPRIV}
+DNS=${CLIENT_DNS}
+Address=${CLIENT}
 
 [Peer]
-PublicKey = ${SERVER_PUBKEY}
-PresharedKey = ${PRESHARED_KEY}
-AllowedIPs = ${SERVER_ALLOWED_IPS}
-Endpoint = ${SERVER}:${SERVER_PORT}
+PublicKey=${SERVER_PUBKEY}
+PresharedKey=${PRESHARED_KEY}
+AllowedIPs=${SERVER_ALLOWED_IPS}
+Endpoint=${SERVER}:${SERVER_PORT}
 EOF
 
