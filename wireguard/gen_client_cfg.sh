@@ -23,6 +23,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+SERVER_ALLOWED_IPS=""
+CPRIV=""
+
 if [ -f ~/.wgconf ]; then
 	. ~/.wgconf
 fi
@@ -34,8 +37,6 @@ usage() {
 	echo "Usage: ${0##*/} [-c preshared_key] [-d dns_server ] [-x server_public_key] [-k client_priv_key ] [-s server_addr] [-p server_port] [-i allowed_ip ...] client_address/mask"
 }
 
-SERVER_ALLOWED_IPS=""
-CPRIV=""
 args=`getopt c:d:hi:k:p:s:x: $*`
 if [ $? -ne 0 ]; then
 	usage
@@ -53,8 +54,9 @@ while [ $# -ne 0 ]; do
 		-i)
 			if [ -z "${SERVER_ALLOWED_IPS}" ]; then
 				SERVER_ALLOWED_IPS="$2"
+			else
+				SERVER_ALLOWED_IPS="${SERVER_ALLOWED_IPS},$2"
 			fi
-			SERVER_ALLOWED_IPS="${SERVER_ALLOWED_IPS},$2"
 			shift; shift;;
 		-h)
 			usage
