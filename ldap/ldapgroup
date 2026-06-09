@@ -60,7 +60,7 @@ find_user() {
 		echo ""
 		return 0
 	fi
-	dn=`ldapsearch -LLL -x ${pass} -H ${LDAP_HOST} -b ${USERS_OU},${BASE_DN} -D ${ADMIN_DN} "(uid=$1)" dn`
+	dn=`ldapsearch -LLL -x ${pass} -H ${LDAP_HOST} -b ${USERS_OU},${BASE_DN} -D ${ADMIN_DN} "(|(cn=$1)(mail=$1))" dn`
 	dn=`echo $dn | cut -f2 -d" "`
 	if [ -z "$dn" ]; then
 		echo ""
@@ -192,7 +192,12 @@ cn: $group
 EOF
 		while [ $# -ne 0 ]; do
 			dn=$(find_user $1)
-			echo "member: $dn" >> ${TEMP}
+			if [ -n "$dn" ]; then
+				echo "member: $dn" >> ${TEMP}
+			else 
+				echo "could not find user $1"
+				exit 1
+			fi
 			shift
 		done
 		# now output template
