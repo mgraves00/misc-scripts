@@ -11,6 +11,8 @@ These scripts are used to assist with manipulating LDAP entries.
 
 - *ldapgroup* Used to manipulate group records.  Use ldapgroup -h for options.
 
+- *ldapservice* Used to manipulate service records.  Use ldapservice -h for options.
+
 - *init_schema.sh* Used to create the initial schema for LDAP.
 
 - *upload_ldif.sh* Used to upload an ldif file to LDAP.
