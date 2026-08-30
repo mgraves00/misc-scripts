@@ -6,7 +6,7 @@
 
 # Various helper scripts for maniuplating IP addresses
 #
-__IPADDRESS_VERSION="1.0"
+__IPADDRESS_VERSION="1.1"
 
 set -A __IPADDRESS_NET_ADDRESS "0" "128" "192" "224" "240" "248" "252" "254"
 set -A __IPADDRESS_BCAST_ADDRESS "255" "127" "63" "31" "15" "7" "3" "1"
@@ -231,6 +231,24 @@ function isv4 {
 	return 0
 }
 
+function v4inaddr {
+	local _na=$1
+	local _a, _m, _o
+	[ -z "${_na}" ] && _na=$(cat)
+	[ -z "${_na}" ] && return 1
+	_a=$(echo "${_na}" | cut -f1 -d"/")
+	_m=$(echo "${_na}" | cut -f2 -d"/")
+	# convert mask to bit
+	[ ${#_m} -gt 2 ] && _m=$(v4mask2bit "${_m}")
+	# if invalid mask or it wasn't set assume host mask
+	[ -z "${_m}" ] && _m="32"
+	_o=1
+	[ "${_m}" -lt 24 ] && _o=2
+	[ "${_m}" -lt 16 ] && _o=3
+	_n=$(v4network "${_a}/${_m}" | v4octs ${_o} | v4reverse)
+	echo "${_n}.in-addr.arpa"
+}
+
 function v6expand {
 	local _a=$1
 	local b, e, i
@@ -452,4 +470,12 @@ function v6reverse {
 	_ar=$(echo ${_a} | tr -d ':' | cut -c1-"${_o}" | rev | fold -w1)
 	_ar=$(echo ${_ar} | tr ' ' '.')
 	echo ${_ar}
+}
+
+function v6inaddr {
+	local _na=$1
+	[ -z "${_na}" ] && _na=$(cat)
+	[ -z "${_na}" ] && return 1
+	_n=$(v6reverse "${_na}")
+	echo "${_n}.in6-addr.arpa"
 }

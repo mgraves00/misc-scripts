@@ -59,3 +59,5 @@ run_test "echo '2001:db8::1/64' | v6broadcast" "2001:0db8:0000:0000:ffff:ffff:ff
 run_test "echo '2001:db8::0/127' | v6broadcast" "2001:0db8:0000:0000:0000:0000:0000:0001"
 
 run_test "echo '2001:db8:40::/64' | v6reverse" "0.0.0.0.0.4.0.0.8.b.d.0.1.0.0.2"
+run_test "echo '192.168.0.0/16' | v4inaddr" "168.192.in-addr.arpa"
+run_test "echo '2001:db8:40::/64' | v6inaddr" "0.0.0.0.0.4.0.0.8.b.d.0.1.0.0.2.in6-addr.arpa"
