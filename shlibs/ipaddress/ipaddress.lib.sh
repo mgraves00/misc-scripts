@@ -6,6 +6,8 @@
 
 # Various helper scripts for maniuplating IP addresses
 #
+__IPADDRESS_VERSION="1.0"
+
 set -A __IPADDRESS_NET_ADDRESS "0" "128" "192" "224" "240" "248" "252" "254"
 set -A __IPADDRESS_BCAST_ADDRESS "255" "127" "63" "31" "15" "7" "3" "1"
 set -A __IPADDRESS_BIT2MASK "0.0.0.0" "128.0.0.0" "192.0.0.0" "224.0.0.0" "240.0.0.0" "248.0.0.0" "252.0.0.0" \
